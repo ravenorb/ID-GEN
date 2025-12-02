@@ -28,6 +28,13 @@ Install dependencies locally:
 pip install pdf417gen python-barcode Pillow
 ```
 
+For PyInstaller builds, install `pyinstaller` and (optionally) `upx` for better compression:
+
+```bash
+pip install pyinstaller
+# macOS/Linux: install UPX via your package manager if desired
+```
+
 ## Using the Tkinter generator
 
 1. Run the desktop app:
@@ -50,6 +57,33 @@ pip install pdf417gen python-barcode Pillow
    - Import `data.csv` into the PSD dataset,
    - Export `front.png` and `back.png` per ID,
    - Write progress to `automation_log.txt` in the root directory.
+
+## Building distributions
+
+### Desktop executable (PyInstaller)
+
+1. Install dependencies:
+   ```bash
+   pip install pdf417gen python-barcode Pillow pyinstaller
+   # Optional but recommended for smaller binaries
+   sudo apt-get install upx  # Linux example
+   ```
+2. Build the app:
+   ```bash
+   pyinstaller idcard_tool.spec --clean
+   ```
+3. Find the bundled app in `dist/idcard_tool/` (produced locally or by the GitHub Action). Zip that folder to distribute.
+
+You can also trigger the **Build desktop executable** GitHub Action manually to produce an artifact without installing anything locally. Provide a `release_tag` input to have the workflow publish the zipped build as a GitHub Release asset (optionally set `release_name` or `prerelease`).
+
+### Static web package
+
+The HTML/JS version is self-contained in `www/index.html` and relies on CDN scripts. To package it:
+1. Create a zip:
+   ```bash
+   zip -r id-gen-web.zip www
+   ```
+2. Host the contents of the `www/` folder on any static host (or open `index.html` locally). The **Build web package** GitHub Action can be run manually to produce the zip artifact for download, and if you pass a `release_tag` input it will publish the zip as a GitHub Release asset.
 
 ## Project structure
 
