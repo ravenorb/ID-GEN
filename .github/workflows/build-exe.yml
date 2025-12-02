@@ -40,11 +40,6 @@ jobs:
       - name: Build executable with PyInstaller
         run: pyinstaller idcard_tool.spec --clean
 
-      - name: Archive executable
-        run: |
-          cd dist
-          zip -r ../idcard_tool.zip idcard_tool
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -74,3 +69,5 @@ jobs:
           asset_path: idcard_tool.zip
           asset_name: idcard_tool_${{ inputs.release_tag }}.zip
           content_type: application/zip
+          path: dist/idcard_tool
+          if-no-files-found: error

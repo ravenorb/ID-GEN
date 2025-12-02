@@ -75,6 +75,7 @@ pip install pyinstaller
 3. Find the bundled app in `dist/idcard_tool/` (produced locally or by the GitHub Action). Zip that folder to distribute.
 
 You can also trigger the **Build desktop executable** GitHub Action manually to produce an artifact without installing anything locally. Provide a `release_tag` input to have the workflow publish the zipped build as a GitHub Release asset (optionally set `release_name` or `prerelease`).
+You can also trigger the **Build desktop executable** GitHub Action manually to produce an artifact without installing anything locally.
 
 ### Static web package
 
@@ -83,7 +84,7 @@ The HTML/JS version is self-contained in `www/index.html` and relies on CDN scri
    ```bash
    zip -r id-gen-web.zip www
    ```
-2. Host the contents of the `www/` folder on any static host (or open `index.html` locally). The **Build web package** GitHub Action can be run manually to produce the zip artifact for download, and if you pass a `release_tag` input it will publish the zip as a GitHub Release asset.
+2. Host the contents of the `www/` folder on any static host (or open `index.html` locally). The **Build web package** GitHub Action can be run manually to produce the zip artifact for download.
 
 ## Project structure
 
