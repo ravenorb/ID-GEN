@@ -13,6 +13,7 @@ A desktop workflow for generating driver-license style ID card assets. The repos
 - **Barcode generation**: Creates AAMVA-style PDF417 payloads (with control characters) and Code128 inventory labels, writing images alongside CSV output.
 - **Debug mode**: Shows the computed dataset and file paths to verify the payload before production.
 - **Photoshop automation**: Batch-renders layered PSDs into front/back PNGs for each generated ID folder, logging the process to `automation_log.txt`.
+- **Built-in image composer**: Generates front/back PNGs with Pillow (no Photoshop) using the produced barcodes plus optional photo and signature assets.
 
 ## Requirements
 
@@ -57,6 +58,83 @@ pip install pyinstaller
    - Import `data.csv` into the PSD dataset,
    - Export `front.png` and `back.png` per ID,
    - Write progress to `automation_log.txt` in the root directory.
+
+## Generating front/back images without Photoshop
+
+The Python generator can now compose simple front/back PNGs directly with Pillow. This is useful for server-side workflows or headless environments where Photoshop is unavailable.
+
+```bash
+python - <<'PY'
+from pathlib import Path
+import idcard_tool
+
+data = {
+    "varDLN": "12345678",
+    "varFIRST": "JANE",
+    "varMID": "Q",
+    "varLAST": "PUBLIC",
+    "varDOB": "01/01/1988",
+    "varADD": "123 MAIN ST",
+    "varCITY": "AUSTIN",
+    "varZIP": "78701",
+    "varFOUR": "0001",
+    "varFISS": "01/01/2006",
+    "varISS": "01/01/2024",
+    "varEXP": "01/01/2032",
+    "varRACE": "WHITE",
+    "varSEX": "F",
+    "varFEET": "5",
+    "varINCH": "7",
+    "varWGHT": "140",
+    "varEYES": "BLU",
+    "varHAIR": "BRO",
+    "varDD": "12345678901234567890",
+    "varINV": "1234567890",
+    "varREST": "NONE",
+    "varEND": "NONE",
+}
+
+out = idcard_tool.generate_outputs(
+    data,
+    output_root=Path(__file__).parent / "output",
+    photo_path="/path/to/photo.jpg",        # optional
+    signature_path="/path/to/signature.png",# optional
+    create_images=True,
+)
+
+print(out["front"])
+print(out["back"])
+PY
+```
+
+If `photo_path` or `signature_path` are omitted, the composer will insert framed placeholders. Generated assets live alongside the CSV and barcode files in `output/<DLN>/`.
+
+## Backend API starter
+
+Spin up a FastAPI service that reuses the same validation and generation logic (including optional photo/signature overlays) by pointing it at the `backend/` folder:
+
+```bash
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --port 8000
+```
+
+- `POST /generate` accepts multipart form data with the existing field names (`varDLN`, `varFIRST`, `varMID`, `varLAST`, etc.) plus optional `photo` and `signature` uploads.
+- The endpoint returns JSON containing the output directory and generated asset paths (`csv`, `pdf417`, `code128`, `front`, `back`).
+- A simple `GET /health` returns `{ "status": "ok" }` for uptime probes.
+
+The backend requirements include the core generator libraries (`pdf417gen`, `python-barcode`, `Pillow`) so the service can render barcodes and images without additional setup.
+
+## Frontend with upload + API wiring
+
+The static web form (`www/index.html`) now includes file inputs for **Photo** and **Signature** plus a **Send to Backend API** button. Set the backend base URL (defaults to `http://localhost:8000`), fill the required fields, attach the images, and click the button to POST everything to `/generate`.
+
+You can serve the static form locally while hitting the API with:
+
+```bash
+python -m http.server 8080 --directory www
+```
+
+Then open http://localhost:8080 in your browser.
 
 ## Building distributions
 
