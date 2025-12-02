@@ -2,6 +2,17 @@ name: Build web package
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag/version to publish as a release (e.g., v1.0.0). Leave blank to skip release."
+        required: false
+      release_name:
+        description: "Optional release title; defaults to 'Web package <tag>'."
+        required: false
+      prerelease:
+        description: "Mark the release as a prerelease"
+        required: false
+        type: boolean
 
 jobs:
   package:
@@ -21,3 +32,26 @@ jobs:
           name: id-gen-web
           path: id-gen-web.zip
           if-no-files-found: error
+
+      - name: Create GitHub release
+        if: ${{ inputs.release_tag != '' }}
+        id: create_github_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          release_name: ${{ inputs.release_name || format('Web package {0}', inputs.release_tag) }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+
+      - name: Upload release asset
+        if: ${{ inputs.release_tag != '' }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_github_release.outputs.upload_url }}
+          asset_path: id-gen-web.zip
+          asset_name: id-gen-web_${{ inputs.release_tag }}.zip
+          content_type: application/zip

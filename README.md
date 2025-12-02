@@ -74,6 +74,7 @@ pip install pyinstaller
    ```
 3. Find the bundled app in `dist/idcard_tool/` (produced locally or by the GitHub Action). Zip that folder to distribute.
 
+You can also trigger the **Build desktop executable** GitHub Action manually to produce an artifact without installing anything locally. Provide a `release_tag` input to have the workflow publish the zipped build as a GitHub Release asset (optionally set `release_name` or `prerelease`).
 You can also trigger the **Build desktop executable** GitHub Action manually to produce an artifact without installing anything locally.
 
 ### Static web package
