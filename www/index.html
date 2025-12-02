@@ -8,6 +8,8 @@
     h1 { margin-bottom: .5rem; }
     .row { display:flex; gap:40px; flex-wrap:wrap; }
     .col { flex:1; min-width:320px; }
+    fieldset { border:1px solid #ccc; padding:10px 12px 14px; border-radius:8px; }
+    legend { padding:0 6px; font-weight:bold; }
     label { display:block; margin-top:6px; font-size:.9rem; }
     input,select,textarea { width:100%; padding:4px; box-sizing:border-box; }
     .btn-row { margin-top:15px; }
@@ -38,51 +40,66 @@
 
 <!-- UI -->
 <div class="row">
-  <div class="col"><h3>Driver Info</h3>
-    <label>DLN<input id="varDLN"></label>
-    <label>First<input id="varFIRST"></label>
-    <label>Middle<input id="varMID"></label>
-    <label>Last<input id="varLAST"></label>
-    <label>DOB<input id="varDOB" placeholder="MM/DD/YYYY"></label>
-    <label>Address<input id="varADD"></label>
-    <label>City<input id="varCITY"></label>
-    <label>ZIP<input id="varZIP"></label>
-    <label>FOUR<input id="varFOUR"></label>
-    <label>First Issue<input id="varFISS"></label>
-    <label>Issue<input id="varISS"></label>
-    <label>Expire<input id="varEXP"></label>
+  <div class="col">
+    <fieldset>
+      <legend>Driver Info</legend>
+      <label>DLN<input id="varDLN"></label>
+      <label>First<input id="varFIRST"></label>
+      <label>Middle<input id="varMID"></label>
+      <label>Last<input id="varLAST"></label>
+      <label>DOB<input id="varDOB" placeholder="MM/DD/YYYY"></label>
+      <label>Address<input id="varADD"></label>
+      <label>City<input id="varCITY"></label>
+      <label>ZIP<input id="varZIP"></label>
+      <label>FOUR<input id="varFOUR"></label>
+      <label>First Issue<input id="varFISS"></label>
+      <label>Issue<input id="varISS"></label>
+      <label>Expire<input id="varEXP"></label>
+    </fieldset>
   </div>
 
-  <div class="col"><h3>Physical / Codes</h3>
-    <label>Race<select id="varRACE">
-      <option value="WHITE">WHITE</option>
-      <option value="BLACK">BLACK</option>
-      <option value="HISPANIC">HISPANIC</option>
-    </select></label>
+  <div class="col">
+    <fieldset>
+      <legend>Physical / Codes</legend>
+      <label>Race<select id="varRACE">
+        <option value="WHITE">WHITE</option>
+        <option value="BLACK">BLACK</option>
+        <option value="HISPANIC">HISPANIC</option>
+      </select></label>
 
-    <label>Sex<select id="varSEX">
-      <option value="M">M</option>
-      <option value="F">F</option>
-    </select></label>
+      <label>Sex<select id="varSEX">
+        <option value="M">M</option>
+        <option value="F">F</option>
+      </select></label>
 
-    <label>Feet<input id="varFEET"></label>
-    <label>Inches<input id="varINCH"></label>
-    <label>Weight<input id="varWGHT"></label>
+      <label>Feet<input id="varFEET"></label>
+      <label>Inches<input id="varINCH"></label>
+      <label>Weight<input id="varWGHT"></label>
 
-    <label>Eyes<select id="varEYES">
-      <option>BLU</option><option>BRO</option><option>GRN</option>
-      <option>HAZ</option><option>BLK</option>
-    </select></label>
+      <label>Eyes<select id="varEYES">
+        <option>BLU</option><option>BRO</option><option>GRN</option>
+        <option>HAZ</option><option>BLK</option>
+      </select></label>
 
-    <label>Hair<select id="varHAIR">
-      <option>BRO</option><option>BLK</option><option>BLO</option>
-      <option>GRY</option><option>RED</option>
-    </select></label>
+      <label>Hair<select id="varHAIR">
+        <option>BRO</option><option>BLK</option><option>BLO</option>
+        <option>GRY</option><option>RED</option>
+      </select></label>
 
-    <label>DD<input id="varDD"></label>
-    <label>Restriction<input id="varREST"></label>
-    <label>Endorsement<input id="varEND"></label>
-    <label>Inventory<input id="varINV"></label>
+      <label>DD<input id="varDD"></label>
+      <label>Restriction<input id="varREST"></label>
+      <label>Endorsement<input id="varEND"></label>
+      <label>Inventory<input id="varINV"></label>
+    </fieldset>
+  </div>
+
+  <div class="col">
+    <fieldset>
+      <legend>Uploads / API</legend>
+      <label>Photo upload<input type="file" id="varPHOTO" accept="image/*"></label>
+      <label>Signature upload<input type="file" id="varSIGNATURE" accept="image/*"></label>
+      <label>Backend API base URL<input id="apiBase" value="http://localhost:8000"></label>
+    </fieldset>
   </div>
 </div>
 
@@ -93,9 +110,13 @@
   <button id="btnDownloadPDF417" disabled>Download PDF417 Data</button>
   <button id="btnDownloadCode128" disabled>Download Code128 PNG</button>
   <button id="btnDownloadPDF417PNG" disabled>Download PDF417 PNG</button>
+  <button id="btnBackendGenerate">Send to Backend API</button>
 </div>
 
 <div id="status" class="status"></div>
+
+<h3>Backend response</h3>
+<textarea id="apiResponse" readonly placeholder="Backend JSON will appear here."></textarea>
 
 <h3>PDF417 INFO</h3>
 <textarea id="pdf417info" readonly></textarea>
@@ -404,6 +425,7 @@ function generate(){
     document.getElementById("btnDownloadCSV").disabled=false;
     document.getElementById("btnDownloadPDF417").disabled=false;
 
+    window._lastVars = vars;
     setStatus("Generated OK.",false);
 
   }catch(e){
@@ -452,9 +474,57 @@ document.getElementById("btnDownloadPDF417PNG").onclick=()=>{
   });
 };
 
+/* ================== BACKEND POST ================== */
+const apiResponse = document.getElementById("apiResponse");
+
+async function sendToBackend(){
+  const apiBase = document.getElementById("apiBase").value.trim().replace(/\/$/, "");
+  if(!apiBase){
+    setStatus("Enter backend API base URL first.", true);
+    return;
+  }
+
+  const required = [
+    "varDLN","varFIRST","varMID","varLAST","varDOB","varADD","varCITY","varZIP","varFOUR",
+    "varFISS","varISS","varEXP","varRACE","varSEX","varFEET","varINCH","varWGHT","varEYES",
+    "varHAIR","varDD","varINV","varREST","varEND"
+  ];
+
+  const fd = new FormData();
+  for(const id of required){
+    const val = document.getElementById(id).value.trim();
+    if(!val){
+      setStatus(`Missing ${id} for backend call.`, true);
+      return;
+    }
+    fd.append(id, val);
+  }
+
+  const photo = document.getElementById("varPHOTO").files[0];
+  if(photo) fd.append("photo", photo);
+  const signature = document.getElementById("varSIGNATURE").files[0];
+  if(signature) fd.append("signature", signature);
+
+  apiResponse.value = "";
+  setStatus("Sending to backend...", false);
+  try{
+    const resp = await fetch(apiBase + "/generate", {method:"POST", body:fd});
+    const json = await resp.json().catch(()=>({raw:""}));
+    if(!resp.ok){
+      setStatus(json?.detail || "Backend error", true);
+    }else{
+      setStatus("Backend generated assets.", false);
+    }
+    apiResponse.value = JSON.stringify(json, null, 2);
+  }catch(err){
+    setStatus("Failed to reach backend: "+err, true);
+  }
+}
+
 /* ================== HOOKUP ================== */
 document.getElementById("btnRandom").onclick=randomIdentity;
 document.getElementById("btnGenerate").onclick=generate;
+document.getElementById("btnBackendGenerate").onclick=sendToBackend;
 
 </script>
 </body>
