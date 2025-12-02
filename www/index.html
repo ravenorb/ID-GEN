@@ -1,0 +1,460 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ID Card Web Tool (Full Fixed Version)</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    h1 { margin-bottom: .5rem; }
+    .row { display:flex; gap:40px; flex-wrap:wrap; }
+    .col { flex:1; min-width:320px; }
+    label { display:block; margin-top:6px; font-size:.9rem; }
+    input,select,textarea { width:100%; padding:4px; box-sizing:border-box; }
+    .btn-row { margin-top:15px; }
+    button { padding:6px 12px; margin-right:8px; }
+    textarea { font-family:monospace; font-size:.8rem; height:150px; }
+    canvas { border:1px solid #444; margin-top:10px; }
+    .status { margin-top:10px; font-weight:bold; }
+    .success { color:#060; }
+    .error { color:#900; }
+  </style>
+
+  <!-- Code128 -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
+  <!-- PDF417 (pdf417-generator) -->
+  <script src="https://cdn.jsdelivr.net/gh/pkoretic/pdf417-generator@master/lib/libbcmath.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/pkoretic/pdf417-generator@master/lib/bcmath.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/pkoretic/pdf417-generator@master/lib/pdf417.js"></script>
+
+</head>
+<body>
+
+<h1>ID Card Web Tool</h1>
+
+<div class="btn-row">
+  <button id="btnRandom">🆔 Generate Random Identity</button>
+</div>
+
+<!-- UI -->
+<div class="row">
+  <div class="col"><h3>Driver Info</h3>
+    <label>DLN<input id="varDLN"></label>
+    <label>First<input id="varFIRST"></label>
+    <label>Middle<input id="varMID"></label>
+    <label>Last<input id="varLAST"></label>
+    <label>DOB<input id="varDOB" placeholder="MM/DD/YYYY"></label>
+    <label>Address<input id="varADD"></label>
+    <label>City<input id="varCITY"></label>
+    <label>ZIP<input id="varZIP"></label>
+    <label>FOUR<input id="varFOUR"></label>
+    <label>First Issue<input id="varFISS"></label>
+    <label>Issue<input id="varISS"></label>
+    <label>Expire<input id="varEXP"></label>
+  </div>
+
+  <div class="col"><h3>Physical / Codes</h3>
+    <label>Race<select id="varRACE">
+      <option value="WHITE">WHITE</option>
+      <option value="BLACK">BLACK</option>
+      <option value="HISPANIC">HISPANIC</option>
+    </select></label>
+
+    <label>Sex<select id="varSEX">
+      <option value="M">M</option>
+      <option value="F">F</option>
+    </select></label>
+
+    <label>Feet<input id="varFEET"></label>
+    <label>Inches<input id="varINCH"></label>
+    <label>Weight<input id="varWGHT"></label>
+
+    <label>Eyes<select id="varEYES">
+      <option>BLU</option><option>BRO</option><option>GRN</option>
+      <option>HAZ</option><option>BLK</option>
+    </select></label>
+
+    <label>Hair<select id="varHAIR">
+      <option>BRO</option><option>BLK</option><option>BLO</option>
+      <option>GRY</option><option>RED</option>
+    </select></label>
+
+    <label>DD<input id="varDD"></label>
+    <label>Restriction<input id="varREST"></label>
+    <label>Endorsement<input id="varEND"></label>
+    <label>Inventory<input id="varINV"></label>
+  </div>
+</div>
+
+<!-- Buttons -->
+<div class="btn-row">
+  <button id="btnGenerate">Generate CSV + Barcodes</button>
+  <button id="btnDownloadCSV" disabled>Download data.csv</button>
+  <button id="btnDownloadPDF417" disabled>Download PDF417 Data</button>
+  <button id="btnDownloadCode128" disabled>Download Code128 PNG</button>
+  <button id="btnDownloadPDF417PNG" disabled>Download PDF417 PNG</button>
+</div>
+
+<div id="status" class="status"></div>
+
+<h3>PDF417 INFO</h3>
+<textarea id="pdf417info" readonly></textarea>
+
+<h3>Full PDF417</h3>
+<textarea id="pdf417full" readonly></textarea>
+
+<h3>Code128</h3>
+<svg id="code128svg"></svg>
+
+<h3>PDF417</h3>
+<canvas id="pdf417canvas"></canvas>
+
+<script>
+
+/* ======================= Helpers ======================= */
+function cleanAlpha(s){return (s||"").toUpperCase().replace(/[^A-Z ]/g,"");}
+function cleanNumeric(s){return (s||"").replace(/\D/g,"");}
+function randomNumeric(n){return [...Array(n)].map(()=>Math.floor(Math.random()*10)).join("");}
+
+function parseDate(s){
+  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if(!m)return null;
+  const d=new Date(+m[3],+m[1]-1,+m[2]);
+  return d.getMonth()==+m[1]-1?d:null;
+}
+
+function mmddyyyy(d){
+  return String(d.getMonth()+1).padStart(2,"0")+"/"+
+         String(d.getDate()).padStart(2,"0")+"/"+
+         d.getFullYear();
+}
+function compact(d){
+  return String(d.getMonth()+1).padStart(2,"0")+
+         String(d.getDate()).padStart(2,"0")+
+         d.getFullYear();
+}
+function addYears(d,y){
+  const nd=new Date(d.getFullYear()+y,d.getMonth(),d.getDate());
+  if(nd.getMonth()!=d.getMonth())
+     return new Date(d.getFullYear()+y,d.getMonth()+1,0);
+  return nd;
+}
+function expFromDOBISS(dob,iss){
+  const y=iss.getFullYear()+8;
+  const mm=dob.getMonth(),dd=dob.getDate();
+  const cand=new Date(y,mm,dd);
+  if(cand.getMonth()!=mm)return new Date(y,mm+1,0);
+  return cand;
+}
+function setStatus(msg,isErr){
+  const el=document.getElementById("status");
+  el.textContent=msg;
+  el.className=isErr?"status error":"status success";
+}
+
+/* ================= RANDOM ID GENERATOR ================= */
+const FN=["MICHAEL","JAMES","DAVID","ROBERT","JOHN","WILLIAM","SARAH","EMILY","ASHLEY","JENNIFER"];
+const MN=["LEE","JAMES","MARIE","ANN","GRACE","SCOTT"];
+const LN=["SMITH","JOHNSON","WILLIAMS","BROWN","DAVIS","GARCIA","TAYLOR","MOORE"];
+const CITIES=[["HOUSTON","770"],["DALLAS","752"],["PHOENIX","850"],["MIAMI","331"]];
+
+function rc(a){return a[Math.floor(Math.random()*a.length)];}
+function rdate(s,e){
+  const d=new Date(s.getTime()+Math.random()*(e.getTime()-s.getTime()));
+  return mmddyyyy(d);
+}
+
+function randomIdentity(){
+  const S=(id,val)=>document.getElementById(id).value=val;
+
+  S("varFIRST",rc(FN));
+  S("varMID",rc(MN));
+  S("varLAST",rc(LN));
+  S("varDLN",randomNumeric(8));
+
+  const dob=rdate(new Date(1975,0,1),new Date(2005,11,31));
+  S("varDOB",dob);
+
+  const [city,z3]=rc(CITIES);
+  S("varCITY",city);
+  S("varADD",(100+Math.floor(Math.random()*9000))+" "+rc(["MAIN ST","OAK ST","ELM ST"]));
+  S("varZIP",z3+String(Math.floor(Math.random()*100)).padStart(2,"0"));
+  S("varFOUR",randomNumeric(4));
+
+  S("varFISS","");
+  S("varISS","");
+  S("varEXP","");
+
+  S("varRACE",rc(["WHITE","BLACK","HISPANIC"]));
+  S("varSEX",Math.random()<0.5?"M":"F");
+  S("varFEET",5+Math.floor(Math.random()*2));
+  S("varINCH",Math.floor(Math.random()*12));
+  S("varWGHT",110+Math.floor(Math.random()*150));
+  S("varEYES",rc(["BLU","BRO","GRN","HAZ","BLK"]));
+  S("varHAIR",rc(["BRO","BLK","BLO","GRY","RED"]));
+  S("varDD",randomNumeric(20));
+  S("varINV",randomNumeric(10));
+  S("varREST",Math.random()<0.8?"NONE":rc(["J","K","L"]));
+  S("varEND",Math.random()<0.8?"NONE":rc(["J","K","L"]));
+
+  setStatus("Random identity generated.",false);
+}
+
+/* ===================== MAIN GENERATOR ===================== */
+function generate(){
+  try{
+    const g=id=>document.getElementById(id).value.trim();
+    const S=(id,val)=>document.getElementById(id).value=val;
+
+    const vars={};
+
+    vars.varDLN=cleanNumeric(g("varDLN"));
+    if(vars.varDLN.length!==8) throw "DLN must be 8 digits.";
+
+    vars.varFIRST=cleanAlpha(g("varFIRST"));
+    vars.varMID=cleanAlpha(g("varMID"));
+    vars.varLAST=cleanAlpha(g("varLAST"));
+    if(vars.varFIRST.length<3)throw"First too short.";
+    if(vars.varMID.length<3)throw"Mid too short.";
+    if(vars.varLAST.length<3)throw"Last too short.";
+
+    const dob=parseDate(g("varDOB"));
+    if(!dob)throw "Invalid DOB";
+
+    vars.vardDOB=mmddyyyy(dob);
+    vars.varDOB=compact(dob);
+
+    if(!g("varFISS")){
+      const m=Math.floor(Math.random()*12)+1;
+      const d=Math.floor(Math.random()*28)+1;
+      const y=dob.getFullYear()+16;
+      S("varFISS",String(m).padStart(2,"0")+"/"+String(d).padStart(2,"0")+"/"+y);
+    }
+    if(!g("varISS")){
+      const m=Math.floor(Math.random()*12)+1;
+      const d=Math.floor(Math.random()*28)+1;
+      S("varISS",String(m).padStart(2,"0")+"/"+String(d).padStart(2,"0")+"/2020");
+    }
+    if(!g("varEXP")){
+      const issTmp=parseDate(g("varISS"));
+      S("varEXP",mmddyyyy(expFromDOBISS(dob,issTmp)));
+    }
+
+    const fiss=parseDate(g("varFISS"));
+    const iss=parseDate(g("varISS"));
+    const exp=parseDate(g("varEXP"));
+    if(fiss<addYears(dob,14))throw"FISS must be >=14 yrs after DOB.";
+    if(iss<fiss)throw"ISS < FISS.";
+    const chk=expFromDOBISS(dob,iss);
+    if(exp.getTime()!=chk.getTime())throw"EXP must be ISS+8 yrs.";
+
+    vars.vardFISS=mmddyyyy(fiss);
+    vars.vardISS=mmddyyyy(iss);
+    vars.vardEXP=mmddyyyy(exp);
+
+    vars.varFISS=compact(fiss);
+    vars.varISS=compact(iss);
+    vars.varEXP=compact(exp);
+
+    vars.varADD=cleanAlpha(g("varADD"));
+    vars.varCITY=cleanAlpha(g("varCITY"));
+    vars.varZIP=cleanNumeric(g("varZIP"));
+    vars.varFOUR=cleanNumeric(g("varFOUR"));
+    if(vars.varZIP.length!==5)throw"ZIP must be 5.";
+    if(vars.varFOUR.length!==4)throw"FOUR must be 4.";
+    vars.varZIP4=vars.varZIP+vars.varFOUR;
+
+    const raceMap={WHITE:"W",BLACK:"BK",HISPANIC:"H"};
+    vars.varRACE=raceMap[g("varRACE")];
+    vars.varSEX=g("varSEX");
+    vars.vareSEX=(vars.varSEX=="F"?"2":"1");
+
+    vars.varFEET=parseInt(g("varFEET"));
+    vars.varINCH=parseInt(g("varINCH"));
+    vars.varHGHT=String(vars.varFEET*12+vars.varINCH);
+    vars.varWGHT=cleanNumeric(g("varWGHT")).padStart(3,"0");
+
+    vars.varEYES=g("varEYES");
+    vars.varHAIR=g("varHAIR");
+    vars.varCLASS="C";
+    vars.varSTATE="TX";
+    vars.varCOUNTRY="USA";
+    vars.varCOMP="F";
+
+    vars.varDD=cleanNumeric(g("varDD"))||randomNumeric(20);
+    if(vars.varDD.length!==20)throw"DD must be 20 digits.";
+    vars.varINV=cleanNumeric(g("varINV"))||randomNumeric(10);
+    if(vars.varINV.length!==10)throw"INV must be 10 digits.";
+
+    vars.varREST=(g("varREST")||"NONE").toUpperCase();
+    vars.varEND =(g("varEND")||"NONE").toUpperCase();
+
+    vars.varNAME=vars.varFIRST+" "+vars.varMID;
+
+    /* -------- PDF417 BUILD -------- */
+
+    const f={};
+    f["DCA"]="DCA"+vars.varCLASS;
+    f["DCD"]="DCD"+vars.varEND;
+    f["DCB"]="DCB"+vars.varREST;
+    f["DBA"]="DBA"+vars.varEXP;
+    f["DCS"]="DCS"+vars.varLAST;
+    f["DDE"]="DDE"+vars.varLAST.slice(0,30);
+    f["DAC"]="DAC"+vars.varFIRST;
+    f["DDF"]="DDF"+vars.varFIRST.slice(0,30);
+    f["DAD"]="DAD"+vars.varMID;
+    f["DDG"]="DDG"+vars.varMID.slice(0,30);
+    f["DBD"]="DBD"+vars.varISS;
+    f["DBB"]="DBB"+vars.varDOB;
+    f["DBC"]="DBC"+vars.vareSEX;
+    f["DAY"]="DAY"+vars.varEYES;
+    f["DAU"]="DAU"+vars.varHGHT+" IN";
+    f["DAG"]="DAG"+vars.varADD;
+    f["DAI"]="DAI"+vars.varCITY;
+    f["DAJ"]="DAJ"+vars.varSTATE;
+    f["DAK"]="DAK"+vars.varZIP4;
+    f["DAQ"]="DAQ00"+vars.varDLN;
+    f["DCF"]="DCF"+vars.varDD;
+    f["DCG"]="DCG"+vars.varCOUNTRY;
+    f["DAZ"]="DAZ"+vars.varHAIR;
+    f["DCK"]="DCK"+vars.varINV;
+    f["DCL"]="DCL"+vars.varRACE;
+    f["DDA"]="DDA"+vars.varCOMP;
+    f["DDB"]="DDB"+vars.varFISS;
+    f["DAW"]="DAW"+vars.varWGHT;
+
+    const order=["DCA","DCD","DCB","DBA","DCS","DDE","DAC","DDF","DAD","DDG","DBD","DBB",
+                 "DBC","DAY","DAU","DAG","DAI","DAJ","DAK","DAQ","DCF","DCG","DAZ",
+                 "DCK","DCL","DDA","DDB","DAW"];
+
+    let pdfinfo="";
+    order.forEach(k=>pdfinfo+=f[k]+"\n");
+    pdfinfo+="DDK1\n\rZTZTAN\n\r";
+
+    vars.varDATA_PDF417INFO=pdfinfo;
+
+    const datalen=Math.max(0,pdfinfo.length-85);
+    vars.varDATALEN=String(datalen).padStart(4,"0");
+    vars.varZTSTART=String(41+datalen).padStart(4,"0");
+
+    vars.varDATA_PDF417=
+      "@\n\x1e\rANSI636015080001DL0041"+
+      vars.varDATALEN+"ZT"+vars.varZTSTART+"0007DL"+
+      pdfinfo;
+
+    document.getElementById("pdf417info").value=pdfinfo;
+    document.getElementById("pdf417full").value=vars.varDATA_PDF417;
+
+    /* -------- CSV -------- */
+    const header=[
+      "ADD","CLASS","CITY","DD","DLN","DOB","DOB2","END","EYES","EXP",
+      "FEET","FOUR","INCH","INV","ISS","LAST","NAME","REST","SEX",
+      "STATE","ZIP"
+    ];
+
+    const row=[
+      vars.varADD,vars.varCLASS,vars.varCITY,vars.varDD,vars.varDLN,
+      vars.vardDOB,vars.varDOB,vars.varEND,vars.varEYES,vars.vardEXP,
+      vars.varFEET,vars.varFOUR,vars.varINCH,vars.varINV,vars.vardISS,
+      vars.varLAST,vars.varNAME,vars.varREST,vars.varSEX,vars.varSTATE,
+      vars.varZIP
+    ];
+
+    const csv=header.join(",")+"\n"+row.join(",")+"\n";
+    window._lastCSV=csv;
+    window._lastPDF417=vars.varDATA_PDF417;
+
+    /* -------- CODE128 -------- */
+    JsBarcode("#code128svg", vars.varINV, {format:"CODE128",displayValue:false});
+    document.getElementById("btnDownloadCode128").disabled=false;
+
+    /* -------- PDF417 IMAGE 600×175 FIX -------- */
+
+    const targetW=600, targetH=175;
+
+    // temporary raw canvas
+    const tmp=document.createElement("canvas");
+    PDF417.draw(vars.varDATA_PDF417, tmp, 4.0, 5, 1);
+
+    const final=document.getElementById("pdf417canvas");
+    final.width=targetW;
+    final.height=targetH;
+    final.style.width=targetW+"px";
+    final.style.height=targetH+"px";
+
+    const ctx=final.getContext("2d");
+    ctx.fillStyle="#FFFFFF";
+    ctx.fillRect(0,0,targetW,targetH);
+
+    const scale=Math.min(
+      (targetW-20)/tmp.width,
+      (targetH-20)/tmp.height
+    );
+
+    const drawW=tmp.width*scale;
+    const drawH=tmp.height*scale;
+    const offX=(targetW-drawW)/2;
+    const offY=(targetH-drawH)/2;
+
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(tmp,0,0,tmp.width,tmp.height,offX,offY,drawW,drawH);
+
+    document.getElementById("btnDownloadPDF417PNG").disabled=false;
+    document.getElementById("btnDownloadCSV").disabled=false;
+    document.getElementById("btnDownloadPDF417").disabled=false;
+
+    setStatus("Generated OK.",false);
+
+  }catch(e){
+    setStatus(String(e),true);
+  }
+}
+
+/* ================== DOWNLOAD HANDLERS ================== */
+
+function dl(name,type,data){
+  const blob=new Blob([data],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=name; a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("btnDownloadCSV").onclick=()=>dl("data.csv","text/csv",_lastCSV);
+document.getElementById("btnDownloadPDF417").onclick=()=>dl("pdf417_data.txt","text/plain",_lastPDF417);
+
+document.getElementById("btnDownloadCode128").onclick=()=>{
+  const svg=document.getElementById("code128svg");
+  const xml=new XMLSerializer().serializeToString(svg);
+  const img=new Image();
+  img.onload=function(){
+    const c=document.createElement("canvas");
+    c.width=img.width; c.height=img.height;
+    c.getContext("2d").drawImage(img,0,0);
+    c.toBlob(b=>{
+      const u=URL.createObjectURL(b);
+      const a=document.createElement("a");
+      a.href=u; a.download="code128.png"; a.click();
+      URL.revokeObjectURL(u);
+    });
+  };
+  img.src="data:image/svg+xml;base64,"+btoa(xml);
+};
+
+document.getElementById("btnDownloadPDF417PNG").onclick=()=>{
+  const c=document.getElementById("pdf417canvas");
+  c.toBlob(b=>{
+    const url=URL.createObjectURL(b);
+    const a=document.createElement("a");
+    a.href=url; a.download="pdf417.png"; a.click();
+    URL.revokeObjectURL(url);
+  });
+};
+
+/* ================== HOOKUP ================== */
+document.getElementById("btnRandom").onclick=randomIdentity;
+document.getElementById("btnGenerate").onclick=generate;
+
+</script>
+</body>
+</html>
