@@ -113,6 +113,7 @@
 
 /* ======================= Helpers ======================= */
 function cleanAlpha(s){return (s||"").toUpperCase().replace(/[^A-Z ]/g,"");}
+function cleanAlnum(s){return (s||"").toUpperCase().replace(/[^A-Z0-9 ]/g,"");}
 function cleanNumeric(s){return (s||"").replace(/\D/g,"");}
 function randomNumeric(n){return [...Array(n)].map(()=>Math.floor(Math.random()*10)).join("");}
 
@@ -231,9 +232,9 @@ function generate(){
       S("varFISS",String(m).padStart(2,"0")+"/"+String(d).padStart(2,"0")+"/"+y);
     }
     if(!g("varISS")){
-      const m=Math.floor(Math.random()*12)+1;
-      const d=Math.floor(Math.random()*28)+1;
-      S("varISS",String(m).padStart(2,"0")+"/"+String(d).padStart(2,"0")+"/2020");
+      // Default ISSUE to the same date as FIRST ISSUE when none is provided
+      // so the EXP calculation and chronological checks stay valid.
+      S("varISS",g("varFISS"));
     }
     if(!g("varEXP")){
       const issTmp=parseDate(g("varISS"));
@@ -256,7 +257,7 @@ function generate(){
     vars.varISS=compact(iss);
     vars.varEXP=compact(exp);
 
-    vars.varADD=cleanAlpha(g("varADD"));
+    vars.varADD=cleanAlnum(g("varADD"));
     vars.varCITY=cleanAlpha(g("varCITY"));
     vars.varZIP=cleanNumeric(g("varZIP"));
     vars.varFOUR=cleanNumeric(g("varFOUR"));
