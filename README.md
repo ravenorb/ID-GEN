@@ -1,10 +1,10 @@
 # ID-GEN
 
-A desktop workflow for generating driver-license style ID card assets. The repository contains:
+A server-focused workflow for generating driver-license style ID card assets. The repository now assumes a backend service will render the barcodes and composite images; the desktop/Windows executable build has been discontinued.
 
-- `idcard_tool.py`: a Tkinter app that validates user input, builds CSV data, and produces barcode images (PDF417 and Code128).
+- `idcard_tool.py`: a Tkinter app that validates user input, builds CSV data, and produces barcode images (PDF417 and Code128). It remains available for local/desktop use, but we no longer package it as a Windows executable.
 - `auto.jsx`: an Adobe Photoshop script that consumes the generated CSV data and exports layered front/back card images from a PSD template.
-- `idcard_tool.spec`: PyInstaller spec used to bundle the Tkinter app into an executable.
+- `backend/`: FastAPI service that validates input and generates CSV, barcodes, and front/back PNGs. Use this for the hosted/web experience.
 
 ## Features
 
@@ -21,7 +21,7 @@ A desktop workflow for generating driver-license style ID card assets. The repos
   - `pdf417gen`
   - `python-barcode`
   - `Pillow` (pulled in by dependencies)
-- **Adobe Photoshop** for running `auto.jsx` against the `texdl.psd` template.
+- **Adobe Photoshop** is optional and only needed if you continue to use `auto.jsx`.
 
 Install dependencies locally:
 
@@ -29,26 +29,20 @@ Install dependencies locally:
 pip install pdf417gen python-barcode Pillow
 ```
 
-For PyInstaller builds, install `pyinstaller` and (optionally) `upx` for better compression:
+## Using the Tkinter generator (desktop)
+
+The Tkinter app remains for local workflows. It is no longer bundled or distributed as a Windows executable; run it directly with Python:
 
 ```bash
-pip install pyinstaller
-# macOS/Linux: install UPX via your package manager if desired
+python idcard_tool.py
 ```
 
-## Using the Tkinter generator
-
-1. Run the desktop app:
-   ```bash
-   python idcard_tool.py
-   ```
-2. Enter required fields. Date inputs must use `MM/DD/YYYY` format; name fields require 3–30 alphabetic characters; DLN must be exactly 8 digits.
-3. The form highlights invalid inputs in red and valid inputs in green. ISSUE auto-fills from FIRST ISSUE, and EXP auto-fills based on DOB/ISS.
-4. Click **Generate** to create outputs under `output/<DLN>/`:
-   - `data.csv`: header + data row for Photoshop variables
-   - `pdf417.png`: AAMVA-style barcode
-   - `code128.png`: inventory barcode
-5. Use **Debug** to inspect the computed variables and file paths without leaving the app.
+- Date inputs must use `MM/DD/YYYY` format; name fields require 3–30 alphabetic characters; DLN must be exactly 8 digits.
+- ISSUE auto-fills from FIRST ISSUE, and EXP auto-fills based on DOB/ISS.
+- Outputs are written to `output/<DLN>/`:
+  - `data.csv`: header + data row for Photoshop variables
+  - `pdf417.png`: AAMVA-style barcode
+  - `code128.png`: inventory barcode
 
 ## Running the Photoshop automation
 
@@ -109,60 +103,25 @@ PY
 
 If `photo_path` or `signature_path` are omitted, the composer will insert framed placeholders. Generated assets live alongside the CSV and barcode files in `output/<DLN>/`.
 
-## Backend API starter
+## Server-first backend (Ubuntu friendly)
 
-Spin up a FastAPI service that reuses the same validation and generation logic (including optional photo/signature overlays) by pointing it at the `backend/` folder:
+Deploy the FastAPI backend to handle all CSV/barcode/image generation for the paid web flow. The service runs cleanly on Ubuntu with system Python or a virtual environment.
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload --port 8000
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-- `POST /generate` accepts multipart form data with the existing field names (`varDLN`, `varFIRST`, `varMID`, `varLAST`, etc.) plus optional `photo` and `signature` uploads.
-- The endpoint returns JSON containing the output directory and generated asset paths (`csv`, `pdf417`, `code128`, `front`, `back`).
-- A simple `GET /health` returns `{ "status": "ok" }` for uptime probes.
+- `POST /generate` accepts multipart form data with the existing field names (`varDLN`, `varFIRST`, `varMID`, `varLAST`, etc.) plus optional `photo` and `signature` uploads. It returns JSON paths for `csv`, `pdf417`, `code128`, `front`, and `back`.
+- `GET /health` reports `{ "status": "ok" }`.
 
-The backend requirements include the core generator libraries (`pdf417gen`, `python-barcode`, `Pillow`) so the service can render barcodes and images without additional setup.
+For production hosting, point a reverse proxy (e.g., Nginx) at the `uvicorn` process or run `uvicorn` behind a process manager such as `systemd` or `supervisor`. All composition happens server-side so client pages never handle barcode logic directly.
 
-## Frontend with upload + API wiring
+## Web frontend (server-rendered only)
 
-The static web form (`www/index.html`) now includes file inputs for **Photo** and **Signature** plus a **Send to Backend API** button. Set the backend base URL (defaults to `http://localhost:8000`), fill the required fields, attach the images, and click the button to POST everything to `/generate`.
-
-You can serve the static form locally while hitting the API with:
-
-```bash
-python -m http.server 8080 --directory www
-```
-
-Then open http://localhost:8080 in your browser.
-
-## Building distributions
-
-### Desktop executable (PyInstaller)
-
-1. Install dependencies:
-   ```bash
-   pip install pdf417gen python-barcode Pillow pyinstaller
-   # Optional but recommended for smaller binaries
-   sudo apt-get install upx  # Linux example
-   ```
-2. Build the app:
-   ```bash
-   pyinstaller idcard_tool.spec --clean
-   ```
-3. Find the bundled app in `dist/idcard_tool/` (produced locally or by the GitHub Action). Zip that folder to distribute.
-
-You can also trigger the **Build desktop executable** GitHub Action manually to produce an artifact without installing anything locally. Provide a `release_tag` input to have the workflow publish the zipped build as a GitHub Release asset (optionally set `release_name` or `prerelease`).
-You can also trigger the **Build desktop executable** GitHub Action manually to produce an artifact without installing anything locally.
-
-### Static web package
-
-The HTML/JS version is self-contained in `www/index.html` and relies on CDN scripts. To package it:
-1. Create a zip:
-   ```bash
-   zip -r id-gen-web.zip www
-   ```
-2. Host the contents of the `www/` folder on any static host (or open `index.html` locally). The **Build web package** GitHub Action can be run manually to produce the zip artifact for download.
+The static form in `www/index.html` now functions strictly as a thin client that posts data and uploads to the backend. It no longer generates CSV or barcodes in the browser. Serve it from any static host (or with `python -m http.server 8080 --directory www`) while pointing `Backend API base URL` to your running FastAPI instance.
 
 ## Project structure
 

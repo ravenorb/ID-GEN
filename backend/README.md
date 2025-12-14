@@ -1,6 +1,6 @@
 # ID-GEN backend (FastAPI)
 
-This backend exposes the existing generator logic over HTTP so you can drive it from the updated web form or another client.
+This backend hosts the generator logic for the paid, server-side web flow. All barcode and image generation happens here so the browser never performs composition.
 
 ## Quick start
 
@@ -9,10 +9,12 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn backend.main:app --reload --port 8000
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
 By default outputs are written to `../output/`. Override with `OUTPUT_ROOT=/path/to/out uvicorn ...`.
+
+For production on Ubuntu, keep the `uvicorn` process alive with `systemd` or `supervisor` and front it with Nginx/Apache as needed.
 
 ## Endpoints
 - `GET /health` → `{ "status": "ok" }` for uptime checks.
