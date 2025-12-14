@@ -10,6 +10,7 @@ import re
 import pdf417gen
 from barcode import Code128
 from barcode.writer import ImageWriter
+from PIL import Image, ImageDraw, ImageFont
 
 
 # ======================================================
@@ -110,11 +111,172 @@ def apply_escape_sequences(s: str) -> str:
     return s
 
 
+def _load_font(size: int, bold: bool = False):
+    candidates = [
+        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+        "Arial.ttf",
+        "Helvetica.ttf",
+    ]
+    for name in candidates:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _paste_centered(base: Image.Image, overlay: Image.Image, box: tuple[int, int, int, int]):
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    overlay.thumbnail((w, h), Image.LANCZOS)
+    ox = x0 + (w - overlay.width) // 2
+    oy = y0 + (h - overlay.height) // 2
+    if overlay.mode == "RGBA":
+        base.alpha_composite(overlay, dest=(ox, oy))
+    else:
+        base.paste(overlay, (ox, oy))
+
+
+def render_card_images(vars_: dict[str, str], pdf417_path: str, code128_path: str,
+                       photo_path: str | None, signature_path: str | None, outdir: str):
+    """
+    Build front/back PNG assets directly with Pillow (no Photoshop).
+
+    The layout is intentionally simple but deterministic so it can run in
+    server/serverless environments. Optional photo/signature images are scaled
+    and centered into reserved regions.
+    """
+    card_size = (1012, 638)  # roughly 3.375" x 2.125" at 300 DPI
+    bg_front = (236, 240, 244)
+    bg_back = (224, 229, 233)
+    accent = (34, 81, 124)
+    text = (33, 37, 41)
+
+    def new_card(color):
+        return Image.new("RGBA", card_size, color + (255,))
+
+    title_font = _load_font(40, bold=True)
+    label_font = _load_font(20, bold=True)
+    body_font = _load_font(20)
+    mono_font = _load_font(18)
+
+    def draw_front():
+        card = new_card(bg_front)
+        draw = ImageDraw.Draw(card)
+        draw.rectangle([0, 0, card_size[0], 90], fill=accent)
+        draw.text((30, 22), "STATE OF TEXAS", font=title_font, fill="white")
+        draw.text((30, 58), "DRIVER LICENSE", font=label_font, fill="white")
+
+        # Photo block
+        photo_box = (40, 120, 350, 520)
+        photo_frame = Image.new("RGBA", (photo_box[2] - photo_box[0], photo_box[3] - photo_box[1]), (210, 215, 221, 255))
+        card.paste(photo_frame, (photo_box[0], photo_box[1]))
+        if photo_path:
+            try:
+                _paste_centered(card, Image.open(photo_path).convert("RGBA"), photo_box)
+            except Exception:
+                pass
+
+        # Signature block
+        sig_box = (40, 530, 350, 600)
+        sig_bg = Image.new("RGBA", (sig_box[2] - sig_box[0], sig_box[3] - sig_box[1]), (255, 255, 255, 255))
+        card.paste(sig_bg, (sig_box[0], sig_box[1]))
+        draw.rectangle(sig_box, outline=accent, width=2)
+        draw.text((sig_box[0], sig_box[1] - 26), "SIGNATURE", font=label_font, fill=text)
+        if signature_path:
+            try:
+                _paste_centered(card, Image.open(signature_path).convert("RGBA"), sig_box)
+            except Exception:
+                pass
+
+        # Textual data
+        x = 380
+        y = 130
+        line_h = 34
+        blocks = [
+            ("DLN", vars_["varDLN"]),
+            ("NAME", f"{vars_['varFIRST']} {vars_['varMID']} {vars_['varLAST']}"),
+            ("ADDRESS", vars_["varADD"]),
+            ("CITY, STATE", f"{vars_['varCITY']}, {vars_['varSTATE']} {vars_['varZIP4'][:5]}"),
+            ("DOB", vars_["vardDOB"]),
+            ("SEX", vars_["varSEX"]),
+            ("HEIGHT", f"{vars_['varFEET']}'{vars_['varINCH']}"),
+            ("WEIGHT", vars_["varWGHT"]),
+            ("EYES", vars_["varEYES"]),
+            ("HAIR", vars_["varHAIR"]),
+            ("RACE", vars_["varRACE"]),
+            ("ISS", vars_["vardISS"]),
+            ("EXP", vars_["vardEXP"]),
+            ("DD", vars_["varDD"]),
+        ]
+        for label, value in blocks:
+            draw.text((x, y), f"{label}: {value}", font=body_font, fill=text)
+            y += line_h
+
+        # PDF417 on front
+        try:
+            pdf417_img = Image.open(pdf417_path).convert("RGBA")
+            target_w = 540
+            scale = target_w / pdf417_img.width
+            target_h = int(pdf417_img.height * scale)
+            pdf417_img = pdf417_img.resize((target_w, target_h), Image.LANCZOS)
+            pdf_box = (x, card_size[1] - target_h - 24)
+            card.alpha_composite(pdf417_img, dest=pdf_box)
+        except Exception:
+            pass
+
+        return card.convert("RGB")
+
+    def draw_back():
+        card = new_card(bg_back)
+        draw = ImageDraw.Draw(card)
+        draw.rectangle([0, 0, card_size[0], 80], fill=accent)
+        draw.text((30, 22), "BACK", font=label_font, fill="white")
+        draw.text((30, 48), "INFORMATION & BARCODES", font=body_font, fill="white")
+
+        try:
+            pdf417_img = Image.open(pdf417_path).convert("RGBA")
+            pdf417_img = pdf417_img.resize((880, int(pdf417_img.height * (880 / pdf417_img.width))), Image.LANCZOS)
+            card.alpha_composite(pdf417_img, dest=((card_size[0] - pdf417_img.width) // 2, 110))
+        except Exception:
+            pass
+
+        try:
+            code_img = Image.open(code128_path).convert("RGBA")
+            code_img = code_img.resize((880, int(code_img.height * (880 / code_img.width))), Image.LANCZOS)
+            card.alpha_composite(code_img, dest=((card_size[0] - code_img.width) // 2, 420))
+        except Exception:
+            pass
+
+        draw.text((30, 560), "INVENTORY:", font=label_font, fill=text)
+        draw.text((180, 560), vars_["varINV"], font=mono_font, fill=text)
+        draw.text((30, 590), "RESTRICTION:", font=label_font, fill=text)
+        draw.text((220, 590), vars_["varREST"], font=mono_font, fill=text)
+        draw.text((480, 590), "ENDORSEMENT:", font=label_font, fill=text)
+        draw.text((700, 590), vars_["varEND"], font=mono_font, fill=text)
+
+        return card.convert("RGB")
+
+    os.makedirs(outdir, exist_ok=True)
+    front_img = draw_front()
+    back_img = draw_back()
+
+    front_path = os.path.join(outdir, "front.png")
+    back_path = os.path.join(outdir, "back.png")
+    front_img.save(front_path)
+    back_img.save(back_path)
+    return {"front": front_path, "back": back_path}
+
+
 # ======================================================
 #  CORE GENERATION
 # ======================================================
 
-def generate_outputs(data: dict, output_root: str):
+def generate_outputs(data: dict, output_root: str,
+                     photo_path: str | None = None,
+                     signature_path: str | None = None,
+                     create_images: bool = False):
     vars_: dict[str, str] = {}
 
     # ----------------------- INPUT VALIDATION -----------------------
@@ -341,12 +503,17 @@ def generate_outputs(data: dict, output_root: str):
         options={"write_text": False}
     )
 
+    images = {}
+    if create_images:
+        images = render_card_images(vars_, pdf417_path, code128_path, photo_path, signature_path, dlndir)
+
     return {
         "csv": csv_path,
         "pdf417": pdf417_path,
         "code128": code128_path,
         "vars": vars_,
         "outdir": dlndir,
+        **images,
     }
 # ======================================================
 #  TKINTER UI WITH LIVE VALIDATION & AUTOFILL

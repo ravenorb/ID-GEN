@@ -1,0 +1,6 @@
+fastapi==0.111.1
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+pdf417gen==0.10.0
+python-barcode==0.15.1
+Pillow==10.3.0
