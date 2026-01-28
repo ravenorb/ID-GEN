@@ -103,6 +103,22 @@ PY
 
 If `photo_path` or `signature_path` are omitted, the composer will insert framed placeholders. Generated assets live alongside the CSV and barcode files in `output/<DLN>/`.
 
+## Rendering from layered PSD templates (no Photoshop)
+
+For layered PSD workflows without running Photoshop, the generator can also render PNGs from PSD templates using `psd-tools`. This works by treating layer names as placeholders:
+
+- **Text layers:** name layers after any of the variable keys (e.g., `varFIRST`, `varLAST`, `varDLN`, `vardDOB`, `vardISS`, `vardEXP`). The renderer hides the layer and draws the text into its bounding box.
+- **Assets:** use layer names `PHOTO`, `SIGNATURE`, `PDF417`, and `CODE128` to place the uploaded photo/signature and generated barcodes into those regions.
+- If only a front or back PSD is provided, the missing side falls back to the built-in Pillow layout.
+
+Install the extra dependency first:
+
+```bash
+pip install psd-tools
+```
+
+When using the FastAPI backend, upload the PSD files as `template_front` and/or `template_back` in the same `/generate` request (see the backend README for an example).
+
 ## Server-first backend (Ubuntu friendly)
 
 Deploy the FastAPI backend to handle all CSV/barcode/image generation for the paid web flow. The service runs cleanly on Ubuntu with system Python or a virtual environment.
@@ -118,6 +134,23 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 - `GET /health` reports `{ "status": "ok" }`.
 
 For production hosting, point a reverse proxy (e.g., Nginx) at the `uvicorn` process or run `uvicorn` behind a process manager such as `systemd` or `supervisor`. All composition happens server-side so client pages never handle barcode logic directly.
+
+## Docker (backend)
+
+Build and run the backend with Docker:
+
+```bash
+docker build -t id-gen-backend .
+docker run --rm -p 8000:8000 -v "$(pwd)/output:/data/output" id-gen-backend
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The container writes generated assets to `./output/` on the host via the mounted volume.
 
 ## Web frontend (server-rendered only)
 

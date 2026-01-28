@@ -67,6 +67,8 @@ async def generate(
     varEND: Annotated[str, Form("NONE")],
     photo: UploadFile | None = File(None),
     signature: UploadFile | None = File(None),
+    template_front: UploadFile | None = File(None),
+    template_back: UploadFile | None = File(None),
 ):
     payload = {
         "varDLN": varDLN,
@@ -96,6 +98,8 @@ async def generate(
 
     tmp_photo = await _save_upload(photo)
     tmp_signature = await _save_upload(signature)
+    tmp_template_front = await _save_upload(template_front)
+    tmp_template_back = await _save_upload(template_back)
 
     try:
         result = idcard_tool.generate_outputs(
@@ -104,12 +108,14 @@ async def generate(
             photo_path=tmp_photo,
             signature_path=tmp_signature,
             create_images=True,
+            template_front_path=tmp_template_front,
+            template_back_path=tmp_template_back,
         )
     except ValueError as exc:  # surface validation issues cleanly
         raise HTTPException(status_code=400, detail=str(exc))
     finally:
         # Clean up temp uploads
-        for path in (tmp_photo, tmp_signature):
+        for path in (tmp_photo, tmp_signature, tmp_template_front, tmp_template_back):
             if path and Path(path).exists():
                 Path(path).unlink()
 

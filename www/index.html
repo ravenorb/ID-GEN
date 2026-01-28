@@ -90,6 +90,8 @@
       <legend>Uploads / API</legend>
       <label>Photo upload<input type="file" id="varPHOTO" accept="image/*"></label>
       <label>Signature upload<input type="file" id="varSIGNATURE" accept="image/*"></label>
+      <label>Front PSD template<input type="file" id="varTEMPLATE_FRONT" accept=".psd"></label>
+      <label>Back PSD template<input type="file" id="varTEMPLATE_BACK" accept=".psd"></label>
       <label>Backend API base URL<input id="apiBase" value="http://localhost:8000"></label>
     </fieldset>
   </div>
@@ -186,6 +188,10 @@ async function sendToBackend(){
   if(photo) fd.append("photo", photo);
   const signature = document.getElementById("varSIGNATURE").files[0];
   if(signature) fd.append("signature", signature);
+  const templateFront = document.getElementById("varTEMPLATE_FRONT").files[0];
+  if(templateFront) fd.append("template_front", templateFront);
+  const templateBack = document.getElementById("varTEMPLATE_BACK").files[0];
+  if(templateBack) fd.append("template_back", templateBack);
 
   const btn = document.getElementById("btnBackendGenerate");
   btn.disabled = true;

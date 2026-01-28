@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+__pycache__
+build
+output
+*.pyc
+*.pyo
+*.pyd
+*.sqlite
+*.log
+*.png
+*.psd
+*.jpg
+*.jpeg
