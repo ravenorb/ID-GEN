@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  id-gen-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      OUTPUT_ROOT: /data/output
+    volumes:
+      - ./output:/data/output

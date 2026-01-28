@@ -138,6 +138,123 @@ def _paste_centered(base: Image.Image, overlay: Image.Image, box: tuple[int, int
         base.paste(overlay, (ox, oy))
 
 
+def _fit_text_to_box(text: str, box: tuple[int, int, int, int], bold: bool = False) -> ImageFont.ImageFont:
+    x0, y0, x1, y1 = box
+    max_width = max(1, x1 - x0)
+    max_height = max(1, y1 - y0)
+    for size in range(min(72, max_height), 7, -1):
+        font = _load_font(size, bold=bold)
+        bbox = font.getbbox(text)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        if text_w <= max_width and text_h <= max_height:
+            return font
+    return _load_font(8, bold=bold)
+
+
+def _draw_text_in_box(image: Image.Image, text: str, box: tuple[int, int, int, int], bold: bool = False):
+    if not text:
+        return
+    draw = ImageDraw.Draw(image)
+    font = _fit_text_to_box(text, box, bold=bold)
+    bbox = font.getbbox(text)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x0, y0, x1, y1 = box
+    x = x0 + 2
+    y = y0 + max(0, (y1 - y0 - text_h) // 2)
+    if x + text_w > x1:
+        x = max(x0, x1 - text_w - 2)
+    draw.text((x, y), text, font=font, fill=(0, 0, 0))
+
+
+def render_psd_images(
+    vars_: dict[str, str],
+    pdf417_path: str,
+    code128_path: str,
+    photo_path: str | None,
+    signature_path: str | None,
+    outdir: str,
+    front_psd_path: str | None = None,
+    back_psd_path: str | None = None,
+):
+    from psd_tools import PSDImage
+
+    def build_text_values():
+        values = {key.upper(): value for key, value in vars_.items()}
+        values.update(
+            {
+                "DLN": vars_["varDLN"],
+                "NAME": f"{vars_['varFIRST']} {vars_['varMID']} {vars_['varLAST']}",
+                "DOB": vars_["vardDOB"],
+                "ISS": vars_["vardISS"],
+                "EXP": vars_["vardEXP"],
+                "ZIP4": vars_["varZIP4"],
+            }
+        )
+        return values
+
+    def collect_layers(psd):
+        layers = {}
+        for layer in psd.descendants():
+            if layer.is_group():
+                continue
+            name = (layer.name or "").strip().upper()
+            if not name:
+                continue
+            layers.setdefault(name, []).append(layer)
+        return layers
+
+    def render_single(psd_path: str, label: str):
+        psd = PSDImage.open(psd_path)
+        layer_map = collect_layers(psd)
+        text_values = build_text_values()
+        text_specs: list[tuple[tuple[int, int, int, int], str]] = []
+        for key, value in text_values.items():
+            if key not in layer_map:
+                continue
+            for layer in layer_map[key]:
+                layer.visible = False
+                text_specs.append((layer.bbox, value))
+
+        asset_specs: list[tuple[tuple[int, int, int, int], str]] = []
+        asset_map = {
+            "PHOTO": photo_path,
+            "SIGNATURE": signature_path,
+            "PDF417": pdf417_path,
+            "CODE128": code128_path,
+        }
+        for name, path in asset_map.items():
+            if not path:
+                continue
+            if name not in layer_map:
+                continue
+            for layer in layer_map[name]:
+                layer.visible = False
+                asset_specs.append((layer.bbox, path))
+
+        base = psd.composite().convert("RGBA")
+        for bbox, value in text_specs:
+            _draw_text_in_box(base, value, bbox, bold=False)
+        for bbox, path in asset_specs:
+            try:
+                overlay = Image.open(path).convert("RGBA")
+            except Exception:
+                continue
+            _paste_centered(base, overlay, bbox)
+
+        out_path = os.path.join(outdir, f"{label}.png")
+        base.convert("RGB").save(out_path)
+        return out_path
+
+    outputs = {}
+    if front_psd_path:
+        outputs["front"] = render_single(front_psd_path, "front")
+    if back_psd_path:
+        outputs["back"] = render_single(back_psd_path, "back")
+    return outputs
+
+
 def render_card_images(vars_: dict[str, str], pdf417_path: str, code128_path: str,
                        photo_path: str | None, signature_path: str | None, outdir: str):
     """
@@ -273,10 +390,15 @@ def render_card_images(vars_: dict[str, str], pdf417_path: str, code128_path: st
 #  CORE GENERATION
 # ======================================================
 
-def generate_outputs(data: dict, output_root: str,
-                     photo_path: str | None = None,
-                     signature_path: str | None = None,
-                     create_images: bool = False):
+def generate_outputs(
+    data: dict,
+    output_root: str,
+    photo_path: str | None = None,
+    signature_path: str | None = None,
+    create_images: bool = False,
+    template_front_path: str | None = None,
+    template_back_path: str | None = None,
+):
     vars_: dict[str, str] = {}
 
     # ----------------------- INPUT VALIDATION -----------------------
@@ -505,7 +627,30 @@ def generate_outputs(data: dict, output_root: str,
 
     images = {}
     if create_images:
-        images = render_card_images(vars_, pdf417_path, code128_path, photo_path, signature_path, dlndir)
+        if template_front_path or template_back_path:
+            images = render_psd_images(
+                vars_,
+                pdf417_path,
+                code128_path,
+                photo_path,
+                signature_path,
+                dlndir,
+                front_psd_path=template_front_path,
+                back_psd_path=template_back_path,
+            )
+            if "front" not in images or "back" not in images:
+                fallback = render_card_images(
+                    vars_,
+                    pdf417_path,
+                    code128_path,
+                    photo_path,
+                    signature_path,
+                    dlndir,
+                )
+                images.setdefault("front", fallback.get("front"))
+                images.setdefault("back", fallback.get("back"))
+        else:
+            images = render_card_images(vars_, pdf417_path, code128_path, photo_path, signature_path, dlndir)
 
     return {
         "csv": csv_path,
