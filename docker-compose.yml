@@ -2,7 +2,11 @@ version: "3.9"
 
 services:
   id-gen-backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: id-gen-backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
