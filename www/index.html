@@ -101,6 +101,8 @@
 
 <h3>Backend response</h3>
 <textarea id="apiResponse" readonly placeholder="Backend JSON will appear here."></textarea>
+<h3>Generated PNG preview</h3>
+<img id="frontPreview" style="max-width:100%;border:1px solid #ccc;border-radius:8px;display:none" alt="Generated front ID">
 
 <script>
 // --------- helpers ---------
@@ -197,6 +199,7 @@ async function sendToBackend(){
   btn.disabled = true;
   setStatus("Sending to backend...", false);
   document.getElementById("apiResponse").value = "";
+  document.getElementById("frontPreview").style.display = "none";
 
   try{
     const resp = await fetch(apiBase + "/generate", {method:"POST", body:fd});
@@ -205,6 +208,11 @@ async function sendToBackend(){
       setStatus(json?.detail || "Backend error", true);
     }else{
       setStatus("Backend generated assets.", false);
+      if(json.front){
+        const encoded = encodeURIComponent(json.front);
+        document.getElementById("frontPreview").src = `${apiBase}/asset?path=${encoded}`;
+        document.getElementById("frontPreview").style.display = "block";
+      }
     }
     document.getElementById("apiResponse").value = JSON.stringify(json, null, 2);
   }catch(err){

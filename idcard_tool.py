@@ -255,6 +255,78 @@ def render_psd_images(
     return outputs
 
 
+def render_template_bundle(
+    vars_: dict[str, str],
+    photo_path: str | None,
+    signature_path: str | None,
+    outdir: str,
+    blank_psd_path: str,
+    photos_psd_path: str,
+    text_psd_path: str,
+):
+    from psd_tools import PSDImage
+
+    base = PSDImage.open(blank_psd_path).composite().convert("RGBA")
+
+    # Place photo/signature using guides from photos.psd.
+    photos_psd = PSDImage.open(photos_psd_path)
+    for layer in photos_psd.descendants():
+        if layer.is_group():
+            continue
+        name = (layer.name or "").strip().lower()
+        if name == "photo" and photo_path:
+            try:
+                _paste_centered(base, Image.open(photo_path).convert("RGBA"), layer.bbox)
+            except Exception:
+                pass
+        if name == "signature" and signature_path:
+            try:
+                _paste_centered(base, Image.open(signature_path).convert("RGBA"), layer.bbox)
+            except Exception:
+                pass
+
+    # Map text placeholders from the uploaded sample text.psd to generated values.
+    replacement_by_sample_text = {
+        "33368322": vars_["varDLN"],
+        "PHANMAHA": vars_["varLAST"],
+        "BRANDON LEE": f"{vars_['varFIRST']} {vars_['varMID']}",
+        "01/10/1984": vars_["vardDOB"],
+        "10026 WILLIAMS FIELD DR": vars_["varADD"],
+        "HOUSTON": vars_["varCITY"],
+        "TX": vars_["varSTATE"],
+        "77064": vars_["varZIP"],
+        "5185": vars_["varFOUR"],
+        "M": vars_["varSEX"],
+        "33378611338920464697": vars_["varDD"],
+        "BRO": vars_["varHAIR"],
+        "01/22/2020": vars_["vardISS"],
+        "01/10/2028": vars_["vardEXP"],
+        "5": vars_["varFEET"],
+        "11": vars_["varINCH"],
+        "C": vars_["varCLASS"],
+    }
+
+    none_idx = 0
+    text_psd = PSDImage.open(text_psd_path)
+    for layer in text_psd.descendants():
+        if layer.is_group() or layer.kind != "type":
+            continue
+        sample = (getattr(layer, "text", "") or "").strip()
+        if not sample:
+            continue
+        value = replacement_by_sample_text.get(sample)
+        if value is None and sample == "NONE":
+            value = vars_["varREST"] if none_idx == 0 else vars_["varEND"]
+            none_idx += 1
+        if value is None:
+            continue
+        _draw_text_in_box(base, value, layer.bbox, bold=False)
+
+    front_path = os.path.join(outdir, "front.png")
+    base.convert("RGB").save(front_path)
+    return {"front": front_path}
+
+
 def render_card_images(vars_: dict[str, str], pdf417_path: str, code128_path: str,
                        photo_path: str | None, signature_path: str | None, outdir: str):
     """
@@ -398,6 +470,9 @@ def generate_outputs(
     create_images: bool = False,
     template_front_path: str | None = None,
     template_back_path: str | None = None,
+    template_blank_path: str | None = None,
+    template_photos_path: str | None = None,
+    template_text_path: str | None = None,
 ):
     vars_: dict[str, str] = {}
 
@@ -627,7 +702,27 @@ def generate_outputs(
 
     images = {}
     if create_images:
-        if template_front_path or template_back_path:
+        if template_blank_path and template_photos_path and template_text_path:
+            images = render_template_bundle(
+                vars_,
+                photo_path,
+                signature_path,
+                dlndir,
+                template_blank_path,
+                template_photos_path,
+                template_text_path,
+            )
+            if "back" not in images:
+                fallback = render_card_images(
+                    vars_,
+                    pdf417_path,
+                    code128_path,
+                    photo_path,
+                    signature_path,
+                    dlndir,
+                )
+                images.setdefault("back", fallback.get("back"))
+        elif template_front_path or template_back_path:
             images = render_psd_images(
                 vars_,
                 pdf417_path,

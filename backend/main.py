@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import idcard_tool
@@ -14,6 +15,7 @@ import idcard_tool
 APP_NAME = "id-gen-backend"
 OUTPUT_ROOT = Path(os.getenv("OUTPUT_ROOT", "output")).resolve()
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+UPLOAD_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "upload"
 
 app = FastAPI(title="ID-GEN API", version="0.1.0")
 app.add_middleware(
@@ -101,6 +103,15 @@ async def generate(
     tmp_template_front = await _save_upload(template_front)
     tmp_template_back = await _save_upload(template_back)
 
+    # Auto-use repo templates if caller didn't provide PSD files.
+    default_blank = UPLOAD_TEMPLATE_DIR / "blank.psd"
+    default_photos = UPLOAD_TEMPLATE_DIR / "photos.psd"
+    default_text = UPLOAD_TEMPLATE_DIR / "text.psd"
+
+    bundle_blank = str(default_blank) if default_blank.exists() else None
+    bundle_photos = str(default_photos) if default_photos.exists() else None
+    bundle_text = str(default_text) if default_text.exists() else None
+
     try:
         result = idcard_tool.generate_outputs(
             payload,
@@ -110,6 +121,9 @@ async def generate(
             create_images=True,
             template_front_path=tmp_template_front,
             template_back_path=tmp_template_back,
+            template_blank_path=bundle_blank,
+            template_photos_path=bundle_photos,
+            template_text_path=bundle_text,
         )
     except ValueError as exc:  # surface validation issues cleanly
         raise HTTPException(status_code=400, detail=str(exc))
@@ -128,6 +142,16 @@ async def generate(
         "front": result.get("front"),
         "back": result.get("back"),
     }
+
+
+@app.get("/asset")
+async def asset(path: str):
+    target = Path(path).resolve()
+    if not str(target).startswith(str(OUTPUT_ROOT)):
+        raise HTTPException(status_code=400, detail="Invalid asset path")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(str(target))
 
 
 if __name__ == "__main__":
