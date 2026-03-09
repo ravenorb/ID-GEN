@@ -32,7 +32,13 @@ docker run --rm -p 8000:8000 -v "$(pwd)/output:/data/output" id-gen-backend
 Docker Compose option:
 
 ```bash
-docker compose up --build
+docker compose up --build -d
+```
+
+For a generic Debian 12 host/container, run the root-level installer script:
+
+```bash
+sudo bash scripts/setup_debian12_docker.sh
 ```
 
 ## Example request (with uploads)

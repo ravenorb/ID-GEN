@@ -147,10 +147,20 @@ docker run --rm -p 8000:8000 -v "$(pwd)/output:/data/output" id-gen-backend
 Or use Docker Compose:
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
 The container writes generated assets to `./output/` on the host via the mounted volume.
+
+### One-shot Debian 12 Docker setup
+
+For a generic Debian 12 container/VM, use the included setup script from the repo root:
+
+```bash
+sudo bash scripts/setup_debian12_docker.sh
+```
+
+This script installs Docker Engine + Compose plugin, enables Docker, creates the output volume directory, and starts the stack in detached mode.
 
 ## Web frontend (server-rendered only)
 
