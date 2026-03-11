@@ -49,6 +49,7 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${BACKEND_DIR}
 Environment=OUTPUT_ROOT=${OUTPUT_DIR}
+Environment=PYTHONPATH=${REPO_ROOT}
 ExecStart=${VENV_DIR}/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 
@@ -79,6 +80,6 @@ Run the API manually:
 
   cd ${BACKEND_DIR}
   source .venv/bin/activate
-  OUTPUT_ROOT=${OUTPUT_DIR} uvicorn main:app --host 0.0.0.0 --port 8000
+  OUTPUT_ROOT=${OUTPUT_DIR} PYTHONPATH=${REPO_ROOT} uvicorn main:app --host 0.0.0.0 --port 8000
 NO_SYSTEMD_SUMMARY
 fi
