@@ -160,6 +160,8 @@ For a generic Debian 12 container/VM, use the included setup script from the rep
 sudo bash scripts/setup_debian12_docker.sh
 ```
 
+If you're using a Proxmox LXC container and Docker install fails, the container likely doesn't allow nested Docker. Use `scripts/setup_backend.sh` instead and run the backend directly with Python/uvicorn.
+
 This script installs Docker Engine + Compose plugin, enables Docker, creates the output volume directory, and starts the stack in detached mode.
 
 ## Web frontend (server-rendered only)
