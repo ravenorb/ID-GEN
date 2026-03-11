@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ID-GEN backend setup script for Ubuntu 24.04
-# Installs Python dependencies, configures a systemd service, and starts the API server.
+# ID-GEN backend setup script for Debian/Ubuntu
+# Installs Python dependencies and configures a systemd service when available.
 
 if [[ ${EUID} -ne 0 ]]; then
   echo "This script must be run as root (use sudo)."
@@ -17,6 +17,11 @@ SERVICE_NAME="id-gen-backend"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 APP_USER=${SUDO_USER:-${USER}}
 OUTPUT_DIR="${REPO_ROOT}/output"
+HAS_SYSTEMD=0
+
+if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+  HAS_SYSTEMD=1
+fi
 
 # Install system packages required for Python and building dependencies.
 apt-get update
@@ -32,6 +37,7 @@ mkdir -p "${OUTPUT_DIR}"
 chown -R "${APP_USER}:${APP_USER}" "${OUTPUT_DIR}"
 
 # Write systemd unit for the FastAPI/uvicorn service.
+if [[ ${HAS_SYSTEMD} -eq 1 ]]; then
 cat > "${SERVICE_FILE}" <<SERVICE
 [Unit]
 Description=ID-GEN FastAPI backend
@@ -43,7 +49,7 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${BACKEND_DIR}
 Environment=OUTPUT_ROOT=${OUTPUT_DIR}
-ExecStart=${VENV_DIR}/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+ExecStart=${VENV_DIR}/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 
 [Install]
@@ -53,11 +59,26 @@ SERVICE
 # Reload systemd, enable, and start the service.
 systemctl daemon-reload
 systemctl enable --now "${SERVICE_NAME}.service"
+fi
 
 cat <<SUMMARY
 ID-GEN backend setup complete.
+SUMMARY
+
+if [[ ${HAS_SYSTEMD} -eq 1 ]]; then
+cat <<SYSTEMD_SUMMARY
 - Service name: ${SERVICE_NAME}
 - Status: $(systemctl is-active ${SERVICE_NAME})
 - Logs: journalctl -u ${SERVICE_NAME} -f
 - API: http://localhost:8000 (health at /health)
-SUMMARY
+SYSTEMD_SUMMARY
+else
+cat <<NO_SYSTEMD_SUMMARY
+No active systemd detected (common in Debian/Proxmox LXC containers).
+Run the API manually:
+
+  cd ${BACKEND_DIR}
+  source .venv/bin/activate
+  OUTPUT_ROOT=${OUTPUT_DIR} uvicorn main:app --host 0.0.0.0 --port 8000
+NO_SYSTEMD_SUMMARY
+fi

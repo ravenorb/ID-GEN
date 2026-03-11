@@ -9,12 +9,23 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 By default outputs are written to `../output/`. Override with `OUTPUT_ROOT=/path/to/out uvicorn ...`.
 
-For production on Ubuntu, keep the `uvicorn` process alive with `systemd` or `supervisor` and front it with Nginx/Apache as needed.
+For production on Ubuntu/Debian, keep the `uvicorn` process alive with `systemd` or `supervisor` and front it with Nginx/Apache as needed.
+
+## Debian 12 Proxmox LXC note
+
+Many Proxmox LXC containers do not run a full `systemd` init and may block nested Docker by default. In that case, skip Docker and run the backend directly:
+
+```bash
+sudo bash scripts/setup_backend.sh
+cd backend
+source .venv/bin/activate
+OUTPUT_ROOT="$(pwd)/../output" uvicorn main:app --host 0.0.0.0 --port 8000
+```
 
 ## Endpoints
 - `GET /health` → `{ "status": "ok" }` for uptime checks.

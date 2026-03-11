@@ -16,6 +16,22 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 TARGET_USER="${SUDO_USER:-${USER}}"
 
+VIRT_TYPE="none"
+if command -v systemd-detect-virt >/dev/null 2>&1; then
+  VIRT_TYPE=$(systemd-detect-virt || true)
+fi
+
+if [[ ! -d /run/systemd/system ]]; then
+  echo "This container does not appear to be running systemd."
+  echo "For Proxmox LXC/non-systemd environments, use: sudo bash scripts/setup_backend.sh"
+  exit 1
+fi
+
+if [[ "${VIRT_TYPE}" == "lxc" ]]; then
+  echo "Detected LXC container. Docker may fail unless nesting is enabled in Proxmox."
+  echo "If Docker install/start fails, use: sudo bash scripts/setup_backend.sh"
+fi
+
 if [[ ! -f "${REPO_ROOT}/docker-compose.yml" ]]; then
   echo "Could not find docker-compose.yml in ${REPO_ROOT}."
   exit 1
