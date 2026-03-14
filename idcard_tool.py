@@ -179,13 +179,14 @@ def render_psd_images(
     back_psd_path: str | None = None,
 ):
     from psd_tools import PSDImage
+    from PIL import Image
 
-    def build_text_values():
+    def build_text_values() -> dict[str, str]:
         values = {key.upper(): value for key, value in vars_.items()}
         values.update(
             {
                 "DLN": vars_["varDLN"],
-                "NAME": f"{vars_['varFIRST']} {vars_['varMID']} {vars_['varLAST']}",
+                "NAME": f"{vars_['varFIRST']} {vars_['varMID']} {vars_['varLAST']}".strip(),
                 "DOB": vars_["vardDOB"],
                 "ISS": vars_["vardISS"],
                 "EXP": vars_["vardEXP"],
@@ -194,57 +195,96 @@ def render_psd_images(
         )
         return values
 
-    def collect_layers(psd):
-        layers = {}
-        for layer in psd.descendants():
-            if layer.is_group():
-                continue
-            name = (layer.name or "").strip().upper()
-            if not name:
-                continue
-            layers.setdefault(name, []).append(layer)
-        return layers
+    def _valid_bbox(bbox) -> bool:
+        if not bbox:
+            return False
+        x0, y0, x1, y1 = map(int, bbox)
+        return x1 > x0 and y1 > y0
+
+    def _load_asset_canvas(canvas_size, asset_path: str, bbox):
+        if not asset_path or not _valid_bbox(bbox):
+            return None
+
+        try:
+            asset = Image.open(asset_path).convert("RGBA")
+        except Exception:
+            return None
+
+        canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+        _paste_centered(canvas, asset, tuple(map(int, bbox)))
+        return canvas
+
+    def _load_text_canvas(canvas_size, text_value: str, bbox):
+        if text_value is None or not _valid_bbox(bbox):
+            return None
+
+        canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+        _draw_text_in_box(canvas, text_value, tuple(map(int, bbox)), bold=False)
+        return canvas
+
+    def _raster_layer_to_canvas(layer, canvas_size):
+        bbox = tuple(map(int, layer.bbox))
+        if not _valid_bbox(bbox):
+            return None
+
+        try:
+            img = layer.composite(viewport=bbox, force=True)
+        except Exception:
+            img = None
+
+        if img is None:
+            return None
+
+        canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+        canvas.alpha_composite(img.convert("RGBA"), dest=(bbox[0], bbox[1]))
+        return canvas
+
+    def _render_node(layer, canvas_size, text_values, asset_map):
+        if not layer.is_visible():
+            return None
+
+        name = (layer.name or "").strip().upper()
+        bbox = tuple(map(int, layer.bbox)) if layer.bbox else None
+
+        if name in asset_map and asset_map[name]:
+            replaced = _load_asset_canvas(canvas_size, asset_map[name], bbox)
+            if replaced is not None:
+                return replaced
+
+        if name in text_values:
+            replaced = _load_text_canvas(canvas_size, text_values[name], bbox)
+            if replaced is not None:
+                return replaced
+
+        if layer.is_group():
+            group_canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+            for child in layer:
+                child_canvas = _render_node(child, canvas_size, text_values, asset_map)
+                if child_canvas is not None:
+                    group_canvas.alpha_composite(child_canvas)
+            return group_canvas
+
+        return _raster_layer_to_canvas(layer, canvas_size)
 
     def render_single(psd_path: str, label: str):
         psd = PSDImage.open(psd_path)
-        layer_map = collect_layers(psd)
+        canvas_size = psd.size
         text_values = build_text_values()
-        text_specs: list[tuple[tuple[int, int, int, int], str]] = []
-        for key, value in text_values.items():
-            if key not in layer_map:
-                continue
-            for layer in layer_map[key]:
-                layer.visible = False
-                text_specs.append((layer.bbox, value))
-
-        asset_specs: list[tuple[tuple[int, int, int, int], str]] = []
         asset_map = {
             "PHOTO": photo_path,
             "SIGNATURE": signature_path,
             "PDF417": pdf417_path,
             "CODE128": code128_path,
         }
-        for name, path in asset_map.items():
-            if not path:
-                continue
-            if name not in layer_map:
-                continue
-            for layer in layer_map[name]:
-                layer.visible = False
-                asset_specs.append((layer.bbox, path))
 
-        base = psd.composite().convert("RGBA")
-        for bbox, value in text_specs:
-            _draw_text_in_box(base, value, bbox, bold=False)
-        for bbox, path in asset_specs:
-            try:
-                overlay = Image.open(path).convert("RGBA")
-            except Exception:
-                continue
-            _paste_centered(base, overlay, bbox)
+        final = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+        for layer in psd:
+            layer_canvas = _render_node(layer, canvas_size, text_values, asset_map)
+            if layer_canvas is not None:
+                final.alpha_composite(layer_canvas)
 
         out_path = os.path.join(outdir, f"{label}.png")
-        base.convert("RGB").save(out_path)
+        final.convert("RGB").save(out_path)
         return out_path
 
     outputs = {}
