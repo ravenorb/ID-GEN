@@ -268,7 +268,11 @@ def render_psd_images(
 
     def render_single(psd_path: str, label: str):
         psd = PSDImage.open(psd_path)
+
+        # Get the true Photoshop composite (background included)
+        base = psd.composite(force=True).convert("RGBA")
         canvas_size = psd.size
+
         text_values = build_text_values()
         asset_map = {
             "PHOTO": photo_path,
@@ -277,11 +281,24 @@ def render_psd_images(
             "CODE128": code128_path,
         }
 
-        final = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
-        for layer in psd:
-            layer_canvas = _render_node(layer, canvas_size, text_values, asset_map)
-            if layer_canvas is not None:
-                final.alpha_composite(layer_canvas)
+        final = base.copy()
+
+        for layer in psd.descendants():
+            if not layer.is_visible():
+                continue
+
+            name = (layer.name or "").strip().upper()
+            bbox = tuple(map(int, layer.bbox)) if layer.bbox else None
+
+            if name in asset_map and asset_map[name]:
+                replacement = _load_asset_canvas(canvas_size, asset_map[name], bbox)
+                if replacement:
+                    final.alpha_composite(replacement)
+
+            if name in text_values:
+                replacement = _load_text_canvas(canvas_size, text_values[name], bbox)
+                if replacement:
+                    final.alpha_composite(replacement)
 
         out_path = os.path.join(outdir, f"{label}.png")
         final.convert("RGB").save(out_path)
