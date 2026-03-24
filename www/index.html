@@ -46,7 +46,7 @@
       <label>FOUR<input id="varFOUR"></label>
       <label>First Issue<input id="varFISS"></label>
       <label>Issue<input id="varISS"></label>
-      <label>Expire<input id="varEXP"></label>
+      <label>Expire (free-form)<input id="varEXP" type="text" autocomplete="off"></label>
     </fieldset>
   </div>
 
@@ -178,7 +178,8 @@ async function sendToBackend(){
 
   const fd = new FormData();
   for(const id of requiredFields){
-    const val = document.getElementById(id).value.trim();
+    const el = document.getElementById(id);
+    const val = id === "varEXP" ? el.value : el.value.trim();
     if(!val){
       setStatus(`Missing ${id} for backend call.`, true);
       return;
